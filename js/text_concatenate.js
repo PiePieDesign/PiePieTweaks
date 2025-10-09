@@ -1,6 +1,3 @@
-// js/text_concatenate.js
-// Adds custom labels and preview display to Text Concatenate node
-
 import { app } from "../../scripts/app.js";
 import { ComfyWidgets } from "../../scripts/widgets.js";
 
@@ -36,7 +33,6 @@ app.registerExtension({
                 previewWidget.inputEl.style.opacity = "0.6";
                 previewWidget.value = "";
                 
-                // Remove placeholder text
                 setTimeout(() => {
                     if (previewWidget.inputEl) {
                         previewWidget.inputEl.placeholder = "";
@@ -47,19 +43,16 @@ app.registerExtension({
                 this.setSize(this.computeSize());
             };
             
-            // Update preview after execution with result from backend
             const onExecuted = nodeType.prototype.onExecuted;
             nodeType.prototype.onExecuted = function(message) {
                 onExecuted?.apply(this, arguments);
                 
-                // Get the processed result from backend and display it
                 if (this.previewWidget && message?.string) {
                     const result = message.string[0] || "";
                     this.previewWidget.value = result;
                 }
             };
             
-            // Draw "Processed Text:" label above the preview widget
             const onDrawForeground = nodeType.prototype.onDrawForeground;
             nodeType.prototype.onDrawForeground = function(ctx) {
                 onDrawForeground?.apply(this, arguments);
@@ -67,13 +60,11 @@ app.registerExtension({
                 if (this.previewWidget) {
                     const widgetIndex = this.widgets.indexOf(this.previewWidget);
                     if (widgetIndex > 0) {
-                        // Calculate Y position above the preview widget
                         let y = 0;
                         for (let i = 0; i < widgetIndex; i++) {
                             y += this.widgets[i].computedHeight || LiteGraph.NODE_WIDGET_HEIGHT;
                         }
                         
-                        // Draw the label
                         ctx.save();
                         ctx.fillStyle = "#AAA";
                         ctx.font = "12px Arial";
