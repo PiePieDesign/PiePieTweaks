@@ -1,17 +1,25 @@
+"""Utility helpers for working with PiePie resolution presets."""
+
+from __future__ import annotations
+
 import json
-import os
+from pathlib import Path
+from typing import Dict, List, Tuple
 
-# Load resolutions from JSON file
-_current_dir = os.path.dirname(os.path.abspath(__file__))
-_json_path = os.path.join(_current_dir, 'js', 'resolutions.json')
 
-with open(_json_path, 'r') as f:
-    _resolutions_data = json.load(f)
+_BASE_DIR = Path(__file__).resolve().parent
+_JSON_PATH = _BASE_DIR / "js" / "resolutions.json"
 
-RESOLUTIONS = {}
+if not _JSON_PATH.exists():
+    raise FileNotFoundError(f"Resolution database missing at {_JSON_PATH}")
+
+with _JSON_PATH.open("r", encoding="utf-8") as handle:
+    _resolutions_data = json.load(handle)
+
+RESOLUTIONS: Dict[str, Dict[str, List[Tuple[int, int]]]] = {}
 for model_type, orientations in _resolutions_data.items():
     RESOLUTIONS[model_type] = {}
     for orientation, resolutions in orientations.items():
         RESOLUTIONS[model_type][orientation] = [
-            (width, height) for width, height in resolutions
+            (int(width), int(height)) for width, height in resolutions
         ]

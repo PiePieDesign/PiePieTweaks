@@ -12,19 +12,22 @@ cur_path = os.path.dirname(os.path.abspath(__file__))
 
 def gc_cleanup():
     gc.collect()
-    torch.cuda.empty_cache()
+    if hasattr(torch, "cuda") and torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 def tensor2cv(tensor_image):
-    if len(tensor_image.shape)==4:# b hwc to hwc
-        tensor_image=tensor_image.squeeze(0)
+    if len(tensor_image.shape) == 4:  # b hwc to hwc
+        tensor_image = tensor_image.squeeze(0)
     if tensor_image.is_cuda:
         tensor_image = tensor_image.cpu()
-    tensor_image=tensor_image.numpy()
-    #反归一化
-    maxValue=tensor_image.max()
-    tensor_image=tensor_image*255/maxValue
-    img_cv2=np.uint8(tensor_image)#32 to uint8
-    img_cv2=cv2.cvtColor(img_cv2,cv2.COLOR_RGB2BGR)
+    tensor_image = tensor_image.numpy()
+    # Reverse normalization
+    max_value = tensor_image.max()
+    if max_value <= 0:
+        max_value = 1.0
+    tensor_image = tensor_image * 255 / max_value
+    img_cv2 = np.uint8(tensor_image)  # 32 to uint8
+    img_cv2 = cv2.cvtColor(img_cv2, cv2.COLOR_RGB2BGR)
     return img_cv2
 
 def phi2narry(img):

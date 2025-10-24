@@ -1,46 +1,45 @@
+from __future__ import annotations
+
+"""Node utilities for selecting preset resolutions across PiePie models."""
+
+from typing import Iterable, List, Sequence
+
 from .resolutions_db import RESOLUTIONS
 
+
 class PiePieResolutionPicker:
-   
+    """Assist users in selecting valid resolutions for different model profiles."""
+
+    MODEL_TYPES = ["ALL", "Flux", "Wan", "Qwen", "SD1.5", "SDXL", "Pony", "CUSTOM"]
+    ORIENTATIONS = ["ALL", "Portrait", "Landscape", "Square"]
+
     @classmethod
-    def get_resolutions_for_type_and_orientation(cls, model_type, orientation):
+    def get_resolutions_for_type_and_orientation(cls, model_type: str, orientation: str) -> List[str]:
         if model_type == "CUSTOM":
             return ["Use Custom Width/Height"]
-        elif model_type == "ALL":
-            if orientation == "ALL":
-                all_res = set()
-                for mtype in RESOLUTIONS:
-                    for orient in RESOLUTIONS[mtype]:
-                        for width, height in RESOLUTIONS[mtype][orient]:
-                            all_res.add(f"{width}x{height}")
-                return sorted(list(all_res), key=lambda x: int(x.split('x')[0]))
-            else:
-                all_res = set()
-                for mtype in RESOLUTIONS:
-                    if orientation in RESOLUTIONS[mtype]:
-                        for width, height in RESOLUTIONS[mtype][orientation]:
-                            all_res.add(f"{width}x{height}")
-                return sorted(list(all_res), key=lambda x: int(x.split('x')[0]))
+
+        if model_type == "ALL":
+            model_types: Iterable[str] = RESOLUTIONS.keys()
         else:
-            if orientation == "ALL":
-                all_res = []
-                for orient in RESOLUTIONS[model_type]:
-                    for width, height in RESOLUTIONS[model_type][orient]:
-                        all_res.append(f"{width}x{height}")
-                return all_res
-            else:
-                return [f"{w}x{h}" for w, h in RESOLUTIONS[model_type][orientation]]
-    
+            model_types = [model_type]
+
+        collected: set[str] = set()
+        for mtype in model_types:
+            orientations = cls._resolve_orientations(mtype, orientation)
+            for orient in orientations:
+                for width, height in RESOLUTIONS.get(mtype, {}).get(orient, []):
+                    collected.add(f"{width}x{height}")
+
+        return sorted(collected, key=cls._sort_key)
+
     @classmethod
-    def INPUT_TYPES(s):
-        default_resolutions = s.get_resolutions_for_type_and_orientation("ALL", "ALL")
-        
+    def INPUT_TYPES(cls):
+        default_resolutions = cls.get_resolutions_for_type_and_orientation("ALL", "ALL")
+
         return {
             "required": {
-                "type": (["ALL", "Flux", "Wan", "Qwen", "SD1.5", "SDXL", "Pony", "CUSTOM"], 
-                        {"default": "ALL"}),
-                "orientation": (["ALL", "Portrait", "Landscape", "Square"], 
-                               {"default": "ALL"}),
+                "type": (cls.MODEL_TYPES, {"default": "ALL"}),
+                "orientation": (cls.ORIENTATIONS, {"default": "ALL"}),
                 "resolution": (default_resolutions, {"default": default_resolutions[0]}),
             },
             "optional": {
@@ -48,19 +47,62 @@ class PiePieResolutionPicker:
                 "custom_height": ("INT", {"default": 1024, "min": 64, "max": 8192, "step": 8}),
             },
         }
-    
+
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
     FUNCTION = "get_resolution"
     CATEGORY = "PiePieDesign"
-    
-    def get_resolution(self, type, orientation, resolution, custom_width=1024, custom_height=1024):
+
+    def get_resolution(
+        self,
+        type: str,
+        orientation: str,
+        resolution: str,
+        custom_width: int = 1024,
+        custom_height: int = 1024,
+    ):
         if type == "CUSTOM":
             return (custom_width, custom_height)
-        
-        width, height = map(int, resolution.split('x'))
-        
+
+        width, height = map(int, resolution.split("x"))
         return (width, height)
+
+    @classmethod
+    def VALIDATE_INPUTS(
+        cls,
+        type: str,
+        orientation: str,
+        resolution: str,
+        custom_width: int = 1024,
+        custom_height: int = 1024,
+    ) -> dict:
+        available = cls.get_resolutions_for_type_and_orientation(type, orientation)
+        if type == "CUSTOM":
+            return {
+                "resolution": "Use Custom Width/Height",
+                "custom_width": custom_width,
+                "custom_height": custom_height,
+            }
+
+        if not available:
+            fallback = cls.get_resolutions_for_type_and_orientation("ALL", "ALL")
+            return {"resolution": fallback[0] if fallback else "1024x1024"}
+
+        if resolution not in available:
+            return {"resolution": available[0]}
+
+        return {"resolution": resolution}
+
+    @staticmethod
+    def _resolve_orientations(model_type: str, orientation: str) -> Sequence[str]:
+        if orientation == "ALL":
+            return RESOLUTIONS.get(model_type, {}).keys()
+        return [orientation]
+
+    @staticmethod
+    def _sort_key(resolution: str) -> int:
+        width_str, _, _ = resolution.partition("x")
+        return int(width_str)
     
     @classmethod
     def IS_CHANGED(s, **kwargs):

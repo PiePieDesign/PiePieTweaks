@@ -1,12 +1,23 @@
-import os
+"""Utility node that mirrors ComfyUI's save behaviour with PiePie tweaks."""
+
+from __future__ import annotations
+
 import json
+import os
+from typing import List, Optional
+
 import numpy as np
+import torch
 from PIL import Image
 from PIL.PngImagePlugin import PngInfo
+
 import folder_paths
 
-class PiePiePreviewImage:   
-    def __init__(self):
+
+class PiePiePreviewImage:
+    """Preview and optionally persist images generated in a workflow."""
+
+    def __init__(self) -> None:
         self.output_dir = folder_paths.get_output_directory()
         self.type = "output"
         self.compress_level = 4
@@ -32,59 +43,69 @@ class PiePiePreviewImage:
     OUTPUT_NODE = True
     CATEGORY = "PiePieDesign"
 
-    def preview_and_save(self, images, save_mode, filename_prefix="", prompt=None, extra_pnginfo=None):        
-        results = []
-        
-        # Handle empty filename_prefix - use empty string which Comfy treats as no prefix
-        # This should match CORE Save Image node behavior but come on guys, put a prefix there
-        if filename_prefix is None:
-            filename_prefix = ""
-        
-        # Determine filename and the counter level
-        full_output_folder, filename, counter, subfolder, filename_prefix = \
-            folder_paths.get_save_image_path(filename_prefix, self.output_dir, images[0].shape[1], images[0].shape[0])
+    def preview_and_save(
+        self,
+        images: torch.Tensor,
+        save_mode: str,
+        filename_prefix: Optional[str] = "",
+        prompt: Optional[dict] = None,
+        extra_pnginfo: Optional[dict] = None,
+    ) -> dict:
+        """Convert a batch of image tensors into previews and optional files."""
 
-        for batch_number, image in enumerate(images):
-            i = 255. * image.cpu().numpy()
-            img = Image.fromarray(np.clip(i, 0, 255).astype(np.uint8))
-            
-            # We take the metadata passed from COMFY
-            metadata = PngInfo()
-            if prompt is not None:
-                metadata.add_text("prompt", json.dumps(prompt))
-            if extra_pnginfo is not None:
-                for x in extra_pnginfo:
-                    metadata.add_text(x, json.dumps(extra_pnginfo[x]))
+        if not isinstance(images, torch.Tensor):
+            raise TypeError("PiePiePreviewImage expects a torch.Tensor batch of images")
+
+        if images.ndim == 0 or images.shape[0] == 0:
+            raise ValueError("PiePiePreviewImage received an empty image batch")
+
+        safe_prefix = filename_prefix or ""
+
+        height, width = images[0].shape[0], images[0].shape[1]
+        full_output_folder, filename, counter, subfolder, safe_prefix = folder_paths.get_save_image_path(
+            safe_prefix, self.output_dir, width, height
+        )
+
+        metadata = self._build_metadata(prompt, extra_pnginfo)
+        results: List[dict] = []
+
+        for image in images:
+            image_uint8 = self._to_uint8(image)
+            pil_image = Image.fromarray(image_uint8)
 
             file = f"{filename}_{counter:05d}_.png"
-            filepath = os.path.join(full_output_folder, file)
-            
+
             if save_mode == "Always save":
-                # Save to established output folder
-                img.save(filepath, pnginfo=metadata, compress_level=self.compress_level)
-                results.append({
-                    "filename": file,
-                    "subfolder": subfolder,
-                    "type": self.type
-                })
+                filepath = os.path.join(full_output_folder, file)
+                pil_image.save(filepath, pnginfo=metadata, compress_level=self.compress_level)
+                results.append({"filename": file, "subfolder": subfolder, "type": self.type})
             else:
-                # Manual save mode - save to temp for preview only
-                # The manual save button will copy from here to output later
-                # Since we use the tempdir for COMFY this will clean after reboot
                 temp_dir = folder_paths.get_temp_directory()
                 temp_file = f"{filename}_{counter:05d}_.png"
                 temp_path = os.path.join(temp_dir, temp_file)
-                img.save(temp_path, pnginfo=metadata, compress_level=self.compress_level)
-                
-                results.append({
-                    "filename": temp_file,
-                    "subfolder": "",
-                    "type": "temp"
-                })
-            
+                pil_image.save(temp_path, pnginfo=metadata, compress_level=self.compress_level)
+                results.append({"filename": temp_file, "subfolder": "", "type": "temp"})
+
             counter += 1
 
         return {"ui": {"images": results}}
+
+    def _build_metadata(
+        self,
+        prompt: Optional[dict],
+        extra_pnginfo: Optional[dict],
+    ) -> PngInfo:
+        metadata = PngInfo()
+        if prompt is not None:
+            metadata.add_text("prompt", json.dumps(prompt))
+        if extra_pnginfo is not None:
+            for key, value in extra_pnginfo.items():
+                metadata.add_text(key, json.dumps(value))
+        return metadata
+
+    def _to_uint8(self, image: torch.Tensor) -> np.ndarray:
+        clipped = image.cpu().clamp(0.0, 1.0).mul(255).round()
+        return clipped.to(dtype=torch.uint8).numpy()
     
     @classmethod
     def IS_CHANGED(s, **kwargs):
