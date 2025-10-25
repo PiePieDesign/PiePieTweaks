@@ -1,5 +1,5 @@
 # Dependencies for PiePie - Lucidflux node
-omegaconf>=2.0.0
-einops>=0.6.0
-diffusers>=0.21.0
-accelerate>=0.20.0
+omegaconf
+einops
+diffusers
+accelerate
